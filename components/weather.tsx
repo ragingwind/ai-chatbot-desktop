@@ -5,6 +5,8 @@ import { format, isWithinInterval } from 'date-fns';
 import { useEffect, useState } from 'react';
 
 interface WeatherAtLocation {
+  error?: string;
+  reason?: string;
   latitude: number;
   longitude: number;
   generationtime_ms: number;
@@ -42,7 +44,7 @@ interface WeatherAtLocation {
   };
 }
 
-const SAMPLE = {
+export const SAMPLE = {
   latitude: 37.763283,
   longitude: -122.41286,
   generationtime_ms: 0.027894973754882812,
@@ -201,11 +203,26 @@ function n(num: number): number {
   return Math.ceil(num);
 }
 
+function convertTemperature(temperature: number, to: string): number {
+  if (to === '°F') {
+    return Math.round((temperature * 9) / 5 + 32);
+  } else if (to === '°C') {
+    return Math.round((temperature - 32) * (5 / 9));
+  }
+  return temperature;
+}
+
 export function Weather({
   weatherAtLocation = SAMPLE,
 }: {
   weatherAtLocation?: WeatherAtLocation;
 }) {
+  const { error } = weatherAtLocation;
+
+  if (error) {
+    weatherAtLocation = SAMPLE;
+  }
+
   const currentHigh = Math.max(
     ...weatherAtLocation.hourly.temperature_2m.slice(0, 24),
   );
@@ -219,6 +236,9 @@ export function Weather({
   });
 
   const [isMobile, setIsMobile] = useState(false);
+  const [currentTemperatureUnit, setCurrentTemperatureUnit] = useState(
+    weatherAtLocation.current_units.temperature_2m,
+  );
 
   useEffect(() => {
     const handleResize = () => {
@@ -243,12 +263,25 @@ export function Weather({
     currentTimeIndex,
     currentTimeIndex + hoursToShow,
   );
-  const displayTemperatures = weatherAtLocation.hourly.temperature_2m.slice(
-    currentTimeIndex,
-    currentTimeIndex + hoursToShow,
-  );
+  const displayTemperatures = weatherAtLocation.hourly.temperature_2m
+    .slice(currentTimeIndex, currentTimeIndex + hoursToShow)
+    .map((temp) => {
+      if (currentTemperatureUnit === '°C') {
+        return n(temp);
+      } else if (currentTemperatureUnit === '°F') {
+        return convertTemperature(temp, currentTemperatureUnit);
+      }
+      return temp;
+    });
+  const currentTemperature =
+    currentTemperatureUnit === '°C'
+      ? n(weatherAtLocation.current.temperature_2m)
+      : convertTemperature(
+          weatherAtLocation.current.temperature_2m,
+          currentTemperatureUnit,
+        );
 
-  return (
+  return !error ? (
     <div
       className={cx(
         'flex flex-col gap-4 rounded-2xl p-4 skeleton-bg max-w-[500px]',
@@ -274,12 +307,42 @@ export function Weather({
             )}
           />
           <div className="text-4xl font-medium text-blue-50">
-            {n(weatherAtLocation.current.temperature_2m)}
-            {weatherAtLocation.current_units.temperature_2m}
+            {currentTemperature}
+            {currentTemperatureUnit}
           </div>
         </div>
 
-        <div className="text-blue-50">{`H:${n(currentHigh)}° L:${n(currentLow)}°`}</div>
+        <div className="text-blue-50">
+          <div className="flex flex-col items-end gap-1">
+            <div>{`H:${n(currentHigh)}° L:${n(currentLow)}°`}</div>
+            <div className="flex items-center text-blue-50 text-sm mb-1">
+              <div className="flex items-center bg-blue-200/20 rounded-full p-1">
+                <button
+                  type="button"
+                  className={`px-2 py-0.5 rounded-full transition-all ${
+                    currentTemperatureUnit === '°C'
+                      ? 'bg-white text-blue-800'
+                      : 'text-blue-50'
+                  }`}
+                  onClick={() => setCurrentTemperatureUnit('°C')}
+                >
+                  °C
+                </button>
+                <button
+                  type="button"
+                  className={`px-2 py-0.5 rounded-full transition-all ${
+                    currentTemperatureUnit === '°F'
+                      ? 'bg-white text-blue-800'
+                      : 'text-blue-50'
+                  }`}
+                  onClick={() => setCurrentTemperatureUnit('°F')}
+                >
+                  °F
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="flex flex-row justify-between">
@@ -301,10 +364,16 @@ export function Weather({
             />
             <div className="text-blue-50 text-sm">
               {n(displayTemperatures[index])}
-              {weatherAtLocation.hourly_units.temperature_2m}
+              {currentTemperatureUnit}
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  ) : (
+    <div className="flex flex-col rounded-2xl pl-4 skeleton-bg max-w-[500px]">
+      <div className="font-medium text-red-600">
+        Error in loading weather data 🌧️☔☀️
       </div>
     </div>
   );

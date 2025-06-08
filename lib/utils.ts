@@ -89,3 +89,111 @@ export function getTrailingMessageId({
 export function sanitizeText(text: string) {
   return text.replace('<has_function_call>', '');
 }
+
+export function formatJSON(jsonString: string) {
+  try {
+    return JSON.stringify(jsonString, null, 2);
+  } catch (e) {
+    return jsonString;
+  }
+}
+
+export function formatToolContent(result?: any) {
+  if (result && typeof result === 'object') {
+    if (result.content) {
+      if (typeof result.content === 'object') {
+        if (Array.isArray(result.content)) {
+          return result.content
+            .map((item: any) => {
+              if (item.type && item.type === 'text') {
+                return item.text;
+              } else {
+                return JSON.stringify(item, null, 2);
+              }
+            })
+            .join('\n');
+        } else {
+          return JSON.stringify(result.content, null, 2);
+        }
+      } else if (typeof result.content === 'string') {
+        return result.content;
+      } else {
+        return 'Unknwown content type';
+      }
+    } else {
+      return JSON.stringify(result, null, 2);
+    }
+  }
+
+  return '';
+}
+
+export function extractMCPToolNameFromString(message: string): string[] {
+  const regex = /@(\w+)/g;
+  const matches = message.match(regex);
+  if (!matches) {
+    return [];
+  }
+  return matches.map((match) => match.replace('@', ''));
+}
+
+type DeepMerge<T, U> = {
+  [K in keyof T | keyof U]: K extends keyof U
+    ? K extends keyof T
+      ? T[K] extends object
+        ? U[K] extends object
+          ? DeepMerge<T[K], U[K]>
+          : U[K]
+        : U[K]
+      : U[K]
+    : K extends keyof T
+      ? T[K]
+      : never;
+};
+
+export function deepMerge<
+  T extends Record<string, any>,
+  U extends Record<string, any>,
+>(target: T, source: U): DeepMerge<T, U>;
+
+export function deepMerge<T extends Record<string, any>>(
+  target: T,
+  ...sources: Array<Record<string, any>>
+): T;
+
+export function deepMerge<T extends Record<string, any>>(
+  target: T,
+  ...sources: Array<Record<string, any>>
+): any {
+  // Create deep copy to avoid mutation
+  const result = structuredClone(target);
+
+  for (const source of sources) {
+    const sourceCopy = structuredClone(source);
+    mergeInto(result, sourceCopy);
+  }
+
+  return result;
+}
+
+function mergeInto(
+  target: Record<string, any>,
+  source: Record<string, any>,
+): void {
+  for (const key in source) {
+    if (Object.prototype.hasOwnProperty.call(source, key)) {
+      const sourceValue = source[key];
+      const targetValue = target[key];
+
+      if (isObject(sourceValue) && isObject(targetValue)) {
+        mergeInto(targetValue, sourceValue);
+      } else {
+        target[key] = sourceValue;
+      }
+    }
+  }
+}
+
+function isObject(item: unknown): item is Record<string, any> {
+  return item !== null && typeof item === 'object' && !Array.isArray(item);
+}
