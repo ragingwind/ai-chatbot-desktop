@@ -4,10 +4,16 @@ const nextConfig: NextConfig = {
   experimental: {
     ppr: true,
   },
+  outputFileTracingIncludes: {
+    '*': ['public/**/*', '.next/static/**/*', '.env'],
+  },
+  serverExternalPackages: ['electron'],
   images: {
+    unoptimized: true,
     remotePatterns: [
       {
-        hostname: 'avatar.vercel.sh',
+        protocol: 'https',
+        hostname: '**',
       },
     ],
   },

@@ -41,3 +41,8 @@ yarn-error.log*
 /playwright-report/
 /blob-report/
 /playwright/*
+
+# Electron
+.tscache
+.electron
+dist
