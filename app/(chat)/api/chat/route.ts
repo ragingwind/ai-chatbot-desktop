@@ -11,6 +11,7 @@ import {
   createStreamId,
   deleteChatById,
   getChatById,
+  getMessageById,
   getMessageCountByUserId,
   getMessagesByChatId,
   getStreamIdsByChatId,
@@ -18,7 +19,7 @@ import {
   saveMessages,
 } from '@/lib/db/queries';
 import { generateUUID, getTrailingMessageId } from '@/lib/utils';
-import { generateTitleFromUserMessage } from '../../actions';
+import { generateTitleFromUserMessage, initializeTools } from '../../actions';
 import { createDocument } from '@/lib/ai/tools/create-document';
 import { updateDocument } from '@/lib/ai/tools/update-document';
 import { requestSuggestions } from '@/lib/ai/tools/request-suggestions';
@@ -26,7 +27,7 @@ import { getWeather } from '@/lib/ai/tools/get-weather';
 import { isProductionEnvironment } from '@/lib/constants';
 import { myProvider } from '@/lib/ai/providers';
 import { entitlementsByUserType } from '@/lib/ai/entitlements';
-import { postRequestBodySchema, type PostRequestBody } from './schema';
+import type { PostRequestBody } from './schema';
 import { geolocation } from '@vercel/functions';
 import {
   createResumableStreamContext,
@@ -36,7 +37,10 @@ import { after } from 'next/server';
 import type { Chat } from '@/lib/db/schema';
 import { differenceInSeconds } from 'date-fns';
 import { ChatSDKError } from '@/lib/errors';
-
+import {
+  getMostRecentMessageByRole,
+  processToolCalls,
+} from '@/lib/utils-server';
 export const maxDuration = 60;
 
 let globalStreamContext: ResumableStreamContext | null = null;
@@ -65,15 +69,22 @@ export async function POST(request: Request) {
   let requestBody: PostRequestBody;
 
   try {
-    const json = await request.json();
-    requestBody = postRequestBodySchema.parse(json);
-  } catch (_) {
+    // @PATCHED: stop using postRequestBodySchema for validation
+    // PostRequestBody only supports user role messages
+    requestBody = await request.json();
+  } catch (err) {
+    console.log(' > Error parsing request body:', err);
     return new ChatSDKError('bad_request:api').toResponse();
   }
 
   try {
-    const { id, message, selectedChatModel, selectedVisibilityType } =
-      requestBody;
+    const {
+      id,
+      message,
+      selectedChatModel,
+      selectedVisibilityType,
+      selectedMCPServerConfigs,
+    } = requestBody;
 
     const session = await auth();
 
@@ -119,6 +130,12 @@ export async function POST(request: Request) {
       message,
     });
 
+    const userMessage = getMostRecentMessageByRole(messages);
+
+    if (!userMessage) {
+      return new Response('No user message found', { status: 400 });
+    }
+
     const { longitude, latitude, city, country } = geolocation(request);
 
     const requestHints: RequestHints = {
@@ -128,28 +145,52 @@ export async function POST(request: Request) {
       country,
     };
 
-    await saveMessages({
-      messages: [
-        {
-          chatId: id,
-          id: message.id,
-          role: 'user',
-          parts: message.parts,
-          attachments: message.experimental_attachments ?? [],
-          createdAt: new Date(),
-        },
-      ],
+    // In process tool calls, we will check if the message has been updated
+    // and if so, we will update the message in the database.
+    const prevUserMessages = await getMessageById({ id: userMessage.id });
+
+    if (prevUserMessages.length <= 0) {
+      await saveMessages({
+        messages: [
+          {
+            chatId: id,
+            id: userMessage.id,
+            role: 'user',
+            parts: userMessage.parts,
+            attachments: userMessage.experimental_attachments ?? [],
+            createdAt: new Date(),
+          },
+        ],
+      });
+    }
+
+    // @FIXME: in multiple steps like tool invocation,
+    // clients are created multiple times
+    const { toolSet, tools, closeClients } = await initializeTools({
+      mcpServerConfigs: selectedMCPServerConfigs,
     });
 
     const streamId = generateUUID();
     await createStreamId({ streamId, chatId: id });
 
     const stream = createDataStream({
-      execute: (dataStream) => {
+      execute: async (dataStream) => {
+        const processedMessages = await processToolCalls({
+          id,
+          dataStream,
+          messages,
+          toolSet,
+        });
+
+        const mcpTools = tools({
+          session,
+          dataStream,
+        });
+
         const result = streamText({
           model: myProvider.languageModel(selectedChatModel),
           system: systemPrompt({ selectedChatModel, requestHints }),
-          messages,
+          messages: processedMessages,
           maxSteps: 5,
           experimental_activeTools:
             selectedChatModel === 'chat-model-reasoning'
@@ -159,6 +200,7 @@ export async function POST(request: Request) {
                   'createDocument',
                   'updateDocument',
                   'requestSuggestions',
+                  ...(Object.keys(mcpTools) as any[]),
                 ],
           experimental_transform: smoothStream({ chunking: 'word' }),
           experimental_generateMessageId: generateUUID,
@@ -170,6 +212,7 @@ export async function POST(request: Request) {
               session,
               dataStream,
             }),
+            ...mcpTools,
           },
           onFinish: async ({ response }) => {
             if (session.user?.id) {
@@ -184,10 +227,16 @@ export async function POST(request: Request) {
                   throw new Error('No assistant message found!');
                 }
 
-                const [, assistantMessage] = appendResponseMessages({
+                // @PATCHED: in case of tool invocation, assistant message is
+                // only in the response.messages without user message
+                const assistantMessage = appendResponseMessages({
                   messages: [message],
                   responseMessages: response.messages,
-                });
+                }).pop();
+
+                if (!assistantMessage) {
+                  throw new Error('No assistant message found!');
+                }
 
                 await saveMessages({
                   messages: [
@@ -202,6 +251,8 @@ export async function POST(request: Request) {
                     },
                   ],
                 });
+
+                await closeClients();
               } catch (_) {
                 console.error('Failed to save chat');
               }

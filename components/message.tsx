@@ -3,7 +3,7 @@
 import type { UIMessage } from 'ai';
 import cx from 'classnames';
 import { AnimatePresence, motion } from 'framer-motion';
-import { memo, useState } from 'react';
+import { memo, startTransition, useState } from 'react';
 import type { Vote } from '@/lib/db/schema';
 import { DocumentToolCall, DocumentToolResult } from './document';
 import { PencilEditIcon, SparklesIcon } from './icons';
@@ -13,12 +13,19 @@ import { PreviewAttachment } from './preview-attachment';
 import { Weather } from './weather';
 import equal from 'fast-deep-equal';
 import { cn, sanitizeText } from '@/lib/utils';
+import { APPROVAL } from '@/lib/types';
 import { Button } from './ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { MessageEditor } from './message-editor';
 import { DocumentPreview } from './document-preview';
 import { MessageReasoning } from './message-reasoning';
-import type { UseChatHelpers } from '@ai-sdk/react';
+import type { useChat, UseChatHelpers } from '@ai-sdk/react';
+import { MCPToolContentCall } from './mcp-tool-content';
+import { MCPToolPermissionRequest } from './mcp-permission-request';
+import { Calculator } from './calculator';
+import { PokemonCarousel } from './pokemon-carousel';
+import useSWR from 'swr';
+import { useMCP } from './mcp-provider';
 
 const PurePreviewMessage = ({
   chatId,
@@ -26,20 +33,52 @@ const PurePreviewMessage = ({
   vote,
   isLoading,
   setMessages,
+  addToolResult,
   reload,
   isReadonly,
   requiresScrollPadding,
+  setInput,
 }: {
   chatId: string;
   message: UIMessage;
   vote: Vote | undefined;
   isLoading: boolean;
   setMessages: UseChatHelpers['setMessages'];
+  addToolResult?: ReturnType<typeof useChat>['addToolResult'];
   reload: UseChatHelpers['reload'];
   isReadonly: boolean;
   requiresScrollPadding: boolean;
+  setInput?: UseChatHelpers['setInput'];
 }) => {
   const [mode, setMode] = useState<'view' | 'edit'>('view');
+  const { data: chatConfig, mutate: setChatConfig } = useSWR<
+    Record<string, any>
+  >(`/chat/${chatId}`);
+  const { mcpTools } = useMCP();
+
+  const handleApproveResult = ({
+    toolName,
+    toolCallId,
+    result,
+    always,
+  }: {
+    toolName: string;
+    toolCallId: string;
+    result: any;
+    always?: boolean;
+  }) => {
+    addToolResult?.({
+      toolCallId,
+      result,
+    });
+
+    if (always) {
+      setChatConfig({
+        ...chatConfig,
+        approved: [...(chatConfig?.approved ?? []), toolName],
+      });
+    }
+  };
 
   return (
     <AnimatePresence>
@@ -61,7 +100,7 @@ const PurePreviewMessage = ({
         >
           {message.role === 'assistant' && (
             <div className="size-8 flex items-center rounded-full justify-center ring-1 shrink-0 ring-border bg-background">
-              <div className="translate-y-px">
+              <div>
                 <SparklesIcon size={14} />
               </div>
             </div>
@@ -160,6 +199,57 @@ const PurePreviewMessage = ({
                 if (state === 'call') {
                   const { args } = toolInvocation;
 
+                  // Check if the tool is a built-in tool or an MCP tool
+                  if (mcpTools[toolName]) {
+                    // If the tool was allowed to execute before, we don't need to ask for permission again
+                    if (
+                      chatConfig?.approved &&
+                      chatConfig?.approved?.indexOf(toolName) !== -1
+                    ) {
+                      // return addToolResult directly cause component rendering conflict
+                      setTimeout(() => {
+                        startTransition(() => {
+                          addToolResult?.({
+                            toolCallId,
+                            result: APPROVAL.YES,
+                          });
+                        });
+                      }, 100);
+                      return;
+                    }
+
+                    return (
+                      <MCPToolPermissionRequest
+                        key={toolCallId}
+                        args={args}
+                        toolName={toolName}
+                        description={mcpTools[toolName]?.description ?? ''}
+                        onAllowOnceAction={() => {
+                          handleApproveResult({
+                            toolName,
+                            toolCallId,
+                            result: APPROVAL.YES,
+                          });
+                        }}
+                        onAllowAlwaysAction={() => {
+                          handleApproveResult({
+                            toolName,
+                            toolCallId,
+                            always: true,
+                            result: APPROVAL.YES,
+                          });
+                        }}
+                        onDenyAction={() => {
+                          handleApproveResult({
+                            toolName,
+                            toolCallId,
+                            result: APPROVAL.NO,
+                          });
+                        }}
+                      />
+                    );
+                  }
+
                   return (
                     <div
                       key={toolCallId}
@@ -183,13 +273,19 @@ const PurePreviewMessage = ({
                           args={args}
                           isReadonly={isReadonly}
                         />
-                      ) : null}
+                      ) : (
+                        <MCPToolContentCall
+                          state={state}
+                          toolName={toolName}
+                          args={args}
+                        />
+                      )}
                     </div>
                   );
                 }
 
                 if (state === 'result') {
-                  const { result } = toolInvocation;
+                  const { result, args } = toolInvocation;
 
                   return (
                     <div key={toolCallId}>
@@ -212,8 +308,26 @@ const PurePreviewMessage = ({
                           result={result}
                           isReadonly={isReadonly}
                         />
+                      ) : toolName === 'calculator' ? (
+                        <Calculator key={toolCallId} args={args} />
+                      ) : toolName === 'pokemons_query' ? (
+                        <PokemonCarousel
+                          result={result}
+                          onClickPokemon={(poketmon) => {
+                            setInput?.(
+                              () =>
+                                `I would like to know more about ${poketmon.name} (${poketmon.id})`,
+                            );
+                          }}
+                        />
                       ) : (
-                        <pre>{JSON.stringify(result, null, 2)}</pre>
+                        <MCPToolContentCall // @FIXME: change name to ToolContentResult thenm remote state
+                          state={state}
+                          args={args}
+                          result={result}
+                          toolName={toolName}
+                          isLoading={isLoading}
+                        />
                       )}
                     </div>
                   );

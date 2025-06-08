@@ -4,7 +4,7 @@ import { Greeting } from './greeting';
 import { memo } from 'react';
 import type { Vote } from '@/lib/db/schema';
 import equal from 'fast-deep-equal';
-import type { UseChatHelpers } from '@ai-sdk/react';
+import type { useChat, UseChatHelpers } from '@ai-sdk/react';
 import { motion } from 'framer-motion';
 import { useMessages } from '@/hooks/use-messages';
 
@@ -14,9 +14,11 @@ interface MessagesProps {
   votes: Array<Vote> | undefined;
   messages: Array<UIMessage>;
   setMessages: UseChatHelpers['setMessages'];
+  addToolResult: ReturnType<typeof useChat>['addToolResult'];
   reload: UseChatHelpers['reload'];
   isReadonly: boolean;
   isArtifactVisible: boolean;
+  setInput: UseChatHelpers['setInput'];
 }
 
 function PureMessages({
@@ -25,8 +27,10 @@ function PureMessages({
   votes,
   messages,
   setMessages,
+  addToolResult,
   reload,
   isReadonly,
+  setInput,
 }: MessagesProps) {
   const {
     containerRef: messagesContainerRef,
@@ -47,6 +51,9 @@ function PureMessages({
       {messages.length === 0 && <Greeting />}
 
       {messages.map((message, index) => (
+        // @FIXME: Rendering all of the parts in the mssage cause performance issues
+        // After finished, the message will be re-rendered, then flinking
+        // The parts should be rendered separately, text is fine, but artifacts are not
         <PreviewMessage
           key={message.id}
           chatId={chatId}
@@ -58,11 +65,13 @@ function PureMessages({
               : undefined
           }
           setMessages={setMessages}
+          addToolResult={addToolResult}
           reload={reload}
           isReadonly={isReadonly}
           requiresScrollPadding={
             hasSentMessage && index === messages.length - 1
           }
+          setInput={setInput}
         />
       ))}
 

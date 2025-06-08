@@ -1,6 +1,12 @@
 'use server';
 
-import { generateText, type UIMessage } from 'ai';
+import {
+  type DataStreamWriter,
+  type Tool,
+  generateText,
+  type ToolSet,
+  type UIMessage,
+} from 'ai';
 import { cookies } from 'next/headers';
 import {
   deleteMessagesByChatIdAfterTimestamp,
@@ -9,6 +15,15 @@ import {
 } from '@/lib/db/queries';
 import type { VisibilityType } from '@/components/visibility-selector';
 import { myProvider } from '@/lib/ai/providers';
+
+import {
+  createMCPClient,
+  createMCPTransport,
+  type MCPClient,
+  type MCPTransport,
+  type MCPServerConfig,
+} from '@/lib/ai/mcp';
+import type { Session } from 'next-auth';
 
 export async function saveChatModelAsCookie(model: string) {
   const cookieStore = await cookies();
@@ -50,4 +65,159 @@ export async function updateChatVisibility({
   visibility: VisibilityType;
 }) {
   await updateChatVisiblityById({ chatId, visibility });
+}
+
+export async function queryMCPTools({
+  mcpServerConfigs,
+}: { mcpServerConfigs: Record<string, MCPServerConfig> }) {
+  const { tools, error } = await createMCPTools({
+    mcpServerConfigs,
+  });
+
+  return {
+    tools: JSON.stringify(tools),
+    error: error,
+  };
+}
+
+interface MCPToolResources {
+  transports: Record<string, MCPTransport>;
+  tools: Record<string, any>;
+  clients: Array<{ client: MCPClient; serverName: string }>;
+}
+
+async function createMCPTools({
+  mcpServerConfigs,
+}: {
+  mcpServerConfigs: Record<string, MCPServerConfig>;
+}): Promise<MCPToolResources & { error: string | null }> {
+  const error = {
+    message: '',
+    name: '',
+  };
+
+  const resources: {
+    transports: Record<string, any>;
+    tools: Record<string, any>;
+    clients: any[];
+  } = {
+    transports: {},
+    tools: {},
+    clients: [],
+  };
+
+  try {
+    // @PLAN: use robust type for transport, client, and tool metadata
+    for (const [name, config] of Object.entries(mcpServerConfigs)) {
+      error.name = name;
+
+      const transport = await createMCPTransport(config);
+      if (!transport) {
+        throw new Error(`Failed to create transport for ${name}`);
+      }
+
+      resources.transports[name] = {
+        transport,
+        serverName: name,
+      };
+    }
+
+    for (const name of Object.keys(resources.transports)) {
+      error.name = name;
+
+      const client = await createMCPClient({
+        transport: resources.transports[name].transport,
+      });
+
+      resources.clients.push({
+        client,
+        serverName: resources.transports[name].serverName,
+      });
+    }
+
+    for (const { client, serverName } of resources.clients.filter(
+      (client) => client !== undefined,
+    )) {
+      for (const [name, tool] of Object.entries(await client.tools())) {
+        error.name = name;
+
+        resources.tools[name] = {
+          ...(tool as any),
+          serverName: serverName,
+        };
+      }
+    }
+  } catch (err) {
+    console.log('[debug] Error creating MCP tools:', err);
+    error.message = `${(err as Error).message || 'Unknown error'} for '${error.name}'`;
+  }
+
+  return {
+    ...resources,
+    error: error.message.length > 0 ? error.message : null,
+  };
+}
+
+export async function closeMCPClients(clients: any[]): Promise<void> {
+  for (const { client } of clients) {
+    try {
+      await client.close();
+    } catch (error) {
+      console.error('Error closing MCP client:', error);
+    }
+  }
+}
+
+export async function initializeTools({
+  mcpServerConfigs,
+}: {
+  mcpServerConfigs: Record<string, MCPServerConfig>;
+}) {
+  const { tools: mcpTools, clients } = await createMCPTools({
+    mcpServerConfigs,
+  });
+
+  const toolSet = Object.entries(mcpTools).reduce(
+    (acc, [name, tool]) => {
+      acc[name] = {
+        description: tool.description || '',
+        execute: tool.execute,
+        tool: () => ({
+          ...tool,
+          execute: undefined,
+        }),
+        parameters: tool.parameters,
+      };
+      return acc;
+    },
+    {} as Record<
+      string,
+      Tool & {
+        tool: (args: {
+          session: Session;
+          dataStream: DataStreamWriter;
+        }) => Tool;
+      }
+    >,
+  );
+
+  return {
+    toolSet,
+    tools: ({
+      session,
+      dataStream,
+    }: { session: Session; dataStream: DataStreamWriter }) => {
+      return Object.keys(toolSet).reduce((acc, tool) => {
+        acc[tool] = toolSet[tool].tool({
+          session,
+          dataStream,
+        });
+
+        return acc;
+      }, {} as ToolSet);
+    },
+    closeClients: async () => {
+      return await closeMCPClients(clients);
+    },
+  };
 }

@@ -536,3 +536,19 @@ export async function getStreamIdsByChatId({ chatId }: { chatId: string }) {
     );
   }
 }
+
+export async function updateMessage({
+  message: newMessage,
+}: {
+  message: DBMessage;
+}) {
+  try {
+    return await db
+      .update(message)
+      .set(newMessage)
+      .where(eq(message.id, newMessage.id));
+  } catch (error) {
+    console.error('Failed to update messages in database', error);
+    throw error;
+  }
+}

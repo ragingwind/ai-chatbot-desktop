@@ -20,6 +20,7 @@ import { useSearchParams } from 'next/navigation';
 import { useChatVisibility } from '@/hooks/use-chat-visibility';
 import { useAutoResume } from '@/hooks/use-auto-resume';
 import { ChatSDKError } from '@/lib/errors';
+import { useMCP } from './mcp-provider';
 
 export function Chat({
   id,
@@ -39,6 +40,7 @@ export function Chat({
   autoResume: boolean;
 }) {
   const { mutate } = useSWRConfig();
+  const { getSelectedMCPServerConfigs } = useMCP();
 
   const { visibilityType } = useChatVisibility({
     chatId: id,
@@ -48,6 +50,7 @@ export function Chat({
   const {
     messages,
     setMessages,
+    addToolResult,
     handleSubmit,
     input,
     setInput,
@@ -69,6 +72,7 @@ export function Chat({
       message: body.messages.at(-1),
       selectedChatModel: initialChatModel,
       selectedVisibilityType: visibilityType,
+      selectedMCPServerConfigs: getSelectedMCPServerConfigs(),
     }),
     onFinish: () => {
       mutate(unstable_serialize(getChatHistoryPaginationKey));
@@ -133,9 +137,11 @@ export function Chat({
           votes={votes}
           messages={messages}
           setMessages={setMessages}
+          addToolResult={addToolResult}
           reload={reload}
           isReadonly={isReadonly}
           isArtifactVisible={isArtifactVisible}
+          setInput={setInput}
         />
 
         <form className="flex mx-auto px-4 bg-background pb-4 md:pb-6 gap-2 w-full md:max-w-3xl">

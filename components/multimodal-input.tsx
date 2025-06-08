@@ -28,6 +28,10 @@ import { ArrowDown } from 'lucide-react';
 import { useScrollToBottom } from '@/hooks/use-scroll-to-bottom';
 import type { VisibilityType } from './visibility-selector';
 
+import { MCPToolSelectDialog } from './mcp-select-dialog';
+import { ChatSettingDialog, ChatSettingButton } from './chat-setting-dialog';
+import { extractMCPToolNameFromString } from '../lib/utils';
+import { useMCP } from './mcp-provider';
 function PureMultimodalInput({
   chatId,
   input,
@@ -59,6 +63,8 @@ function PureMultimodalInput({
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { width } = useWindowSize();
+  const [showSettings, setShowSettings] = useState(false);
+  const { setSelectedMCPTools } = useMCP();
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -112,10 +118,15 @@ function PureMultimodalInput({
   const submitForm = useCallback(() => {
     window.history.replaceState({}, '', `/chat/${chatId}`);
 
+    setSelectedMCPTools(
+      extractMCPToolNameFromString(textareaRef.current?.value || ''),
+    );
+
     handleSubmit(undefined, {
       experimental_attachments: attachments,
     });
 
+    setSelectedMCPTools([]);
     setAttachments([]);
     setLocalStorageInput('');
     resetHeight();
@@ -130,6 +141,7 @@ function PureMultimodalInput({
     setLocalStorageInput,
     width,
     chatId,
+    setSelectedMCPTools,
   ]);
 
   const uploadFile = async (file: File) => {
@@ -262,37 +274,51 @@ function PureMultimodalInput({
         </div>
       )}
 
-      <Textarea
-        data-testid="multimodal-input"
-        ref={textareaRef}
-        placeholder="Send a message..."
-        value={input}
-        onChange={handleInput}
-        className={cx(
-          'min-h-[24px] max-h-[calc(75dvh)] overflow-hidden resize-none rounded-2xl !text-base bg-muted pb-10 dark:border-zinc-700',
-          className,
-        )}
-        rows={2}
-        autoFocus
-        onKeyDown={(event) => {
-          if (
-            event.key === 'Enter' &&
-            !event.shiftKey &&
-            !event.nativeEvent.isComposing
-          ) {
-            event.preventDefault();
+      {/* @FIXME: use textareaRef.current?.value instead of wrapping component */}
+      <MCPToolSelectDialog
+        textareaRef={textareaRef}
+        input={input}
+        setInput={setInput}
+      >
+        <Textarea
+          data-testid="multimodal-input"
+          ref={textareaRef}
+          placeholder="Send a message..."
+          value={input}
+          onChange={handleInput}
+          className={cx(
+            'min-h-[24px] max-h-[calc(75dvh)] overflow-hidden resize-none rounded-2xl !text-base bg-muted pb-10 dark:border-zinc-700',
+            className,
+          )}
+          rows={2}
+          autoFocus
+          onKeyDown={(event) => {
+            if (
+              event.key === 'Enter' &&
+              !event.shiftKey &&
+              !event.nativeEvent.isComposing
+            ) {
+              event.preventDefault();
 
-            if (status !== 'ready') {
-              toast.error('Please wait for the model to finish its response!');
-            } else {
-              submitForm();
+              if (status !== 'ready') {
+                toast.error(
+                  'Please wait for the model to finish its response!',
+                );
+              } else {
+                submitForm();
+              }
             }
-          }
-        }}
-      />
+          }}
+        />
+      </MCPToolSelectDialog>
 
       <div className="absolute bottom-0 p-2 w-fit flex flex-row justify-start">
         <AttachmentsButton fileInputRef={fileInputRef} status={status} />
+        <ChatSettingButton
+          onClick={() => {
+            setShowSettings((prev) => !prev);
+          }}
+        />
       </div>
 
       <div className="absolute bottom-0 right-0 p-2 w-fit flex flex-row justify-end">
@@ -306,6 +332,11 @@ function PureMultimodalInput({
           />
         )}
       </div>
+
+      <ChatSettingDialog
+        showSettings={showSettings}
+        setShowSettings={setShowSettings}
+      />
     </div>
   );
 }
