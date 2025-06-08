@@ -23,7 +23,7 @@
 - Initial release with Next.js 14 and Electron integration
   - Default package manager must be npm to navigate packages in the packed file
   - Add commands with postfix 'e', `dev:e`, `build:e` and `start:e` for build and dev with Electron
-    - `npm run build && npm run build:e && npm run start:e` for building and running application
+    - `pnpm build && pnpm build:e && pnpm start:e` for building and running application
 - Implemented basic chat functionality with Antrophic AI providers
 - Added MCP Integration
   - Loading MCP servers from config file

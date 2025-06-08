@@ -187,6 +187,8 @@ export async function POST(request: Request) {
           dataStream,
         });
 
+        console.log(' > MCP tools:', mcpTools);
+
         const result = streamText({
           model: myProvider.languageModel(selectedChatModel),
           system: systemPrompt({ selectedChatModel, requestHints }),
