@@ -1,4 +1,5 @@
 import {
+  APICallError,
   appendClientMessage,
   appendResponseMessages,
   createDataStream,
@@ -187,8 +188,6 @@ export async function POST(request: Request) {
           dataStream,
         });
 
-        console.log(' > MCP tools:', mcpTools);
-
         const result = streamText({
           model: myProvider.languageModel(selectedChatModel),
           system: systemPrompt({ selectedChatModel, requestHints }),
@@ -272,7 +271,7 @@ export async function POST(request: Request) {
           sendReasoning: true,
         });
       },
-      onError: () => {
+      onError: (error) => {
         return 'Oops, an error occurred!';
       },
     });
@@ -287,8 +286,16 @@ export async function POST(request: Request) {
       return new Response(stream);
     }
   } catch (error) {
+    console.error('Error in chat API:', error);
     if (error instanceof ChatSDKError) {
       return error.toResponse();
+    } else if (error instanceof APICallError) {
+      const chatSDKError = new ChatSDKError(
+        'bad_request:api',
+        error.message ?? error.responseBody,
+      );
+      chatSDKError.cause = error.responseBody || error.cause;
+      return chatSDKError.toResponse();
     }
   }
 }

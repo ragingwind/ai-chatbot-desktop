@@ -5,6 +5,7 @@ import {
 } from 'ai';
 import { xai } from '@ai-sdk/xai';
 import { anthropic } from '@ai-sdk/anthropic';
+import { ollama } from 'ollama-ai-provider';
 import { isTestEnvironment } from '../constants';
 import {
   artifactModel,
@@ -13,15 +14,17 @@ import {
   titleModel,
 } from './models.test';
 
+const textModel = customProvider({
+  languageModels: {
+    'chat-model': chatModel,
+    'chat-model-reasoning': reasoningModel,
+    'title-model': titleModel,
+    'artifact-model': artifactModel,
+  },
+});
+
 export const xaiProvider = isTestEnvironment
-  ? customProvider({
-      languageModels: {
-        'chat-model': chatModel,
-        'chat-model-reasoning': reasoningModel,
-        'title-model': titleModel,
-        'artifact-model': artifactModel,
-      },
-    })
+  ? textModel
   : customProvider({
       languageModels: {
         'chat-model': xai('grok-2-vision-1212'),
@@ -38,14 +41,7 @@ export const xaiProvider = isTestEnvironment
     });
 
 export const anthropicProvider = isTestEnvironment
-  ? customProvider({
-      languageModels: {
-        'chat-model': chatModel,
-        'chat-model-reasoning': reasoningModel,
-        'title-model': titleModel,
-        'artifact-model': artifactModel,
-      },
-    })
+  ? textModel
   : customProvider({
       languageModels: {
         'chat-model': anthropic('claude-3-7-sonnet-20250219'),
@@ -58,9 +54,24 @@ export const anthropicProvider = isTestEnvironment
       },
     });
 
+export const ollamaProvider = isTestEnvironment
+  ? textModel
+  : customProvider({
+      languageModels: {
+        'chat-model': ollama(process.env.OLLAMA_CHAT_MODEL || 'llama3'),
+        'chat-model-reasoning': wrapLanguageModel({
+          model: ollama(process.env.OLLAMA_CHAT_MODEL || 'llama3'),
+          middleware: extractReasoningMiddleware({ tagName: 'think' }),
+        }),
+        'title-model': ollama(process.env.OLLAMA_CHAT_MODEL || 'llama3'),
+        'artifact-model': ollama(process.env.OLLAMA_CHAT_MODEL || 'llama3'),
+      },
+    });
+
 const providers = {
   anthropic: anthropicProvider,
   xai: xaiProvider,
+  ollama: ollamaProvider,
 };
 
 export const myProvider =
