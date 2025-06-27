@@ -138,6 +138,10 @@ export class ChatPage {
       .all();
     const lastMessageElement = messageElements[messageElements.length - 1];
 
+    if (!lastMessageElement) {
+      return null;
+    }
+
     const content = await lastMessageElement
       .getByTestId('message-content')
       .innerText()

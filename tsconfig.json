@@ -26,6 +26,12 @@
     "next-env.d.ts",
     "app/**/*.ts",
     "app/**/*.tsx",
+    "components/**/*.ts",
+    "components/**/*.tsx",
+    "lib/**/*.ts",
+    "lib/**/*.tsx",
+    "hooks/**/*.ts",
+    "hooks/**/*.tsx",
     ".next/types/**/*.ts",
     "next.config.js"
   ],

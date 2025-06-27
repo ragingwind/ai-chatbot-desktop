@@ -1,4 +1,4 @@
-import { Server, Settings, SettingsIcon, X } from 'lucide-react';
+import { Server, Settings, SettingsIcon, } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { memo, useState } from 'react';
 import {

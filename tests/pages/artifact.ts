@@ -1,4 +1,4 @@
-import { expect, Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 
 export class ArtifactPage {
   constructor(private page: Page) {}
@@ -38,6 +38,10 @@ export class ArtifactPage {
       .getByTestId('message-assistant')
       .all();
     const lastMessageElement = messageElements[messageElements.length - 1];
+
+    if (!lastMessageElement) {
+      return null;
+    }
 
     const content = await lastMessageElement
       .getByTestId('message-content')

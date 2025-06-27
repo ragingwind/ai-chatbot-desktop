@@ -26,7 +26,7 @@ import { updateDocument } from '@/lib/ai/tools/update-document';
 import { requestSuggestions } from '@/lib/ai/tools/request-suggestions';
 import { getWeather } from '@/lib/ai/tools/get-weather';
 import { isProductionEnvironment } from '@/lib/constants';
-import { myProvider } from '@/lib/ai/providers';
+import { getProviderById } from '@/lib/ai/providers';
 import { entitlementsByUserType } from '@/lib/ai/entitlements';
 import type { PostRequestBody } from './schema';
 import { geolocation } from '@vercel/functions';
@@ -83,6 +83,7 @@ export async function POST(request: Request) {
       id,
       message,
       selectedChatModel,
+      selectedProvider,
       selectedVisibilityType,
       selectedMCPServerConfigs,
     } = requestBody;
@@ -188,8 +189,9 @@ export async function POST(request: Request) {
           dataStream,
         });
 
+        const selectedProviderInstance = getProviderById(selectedProvider || 'anthropic');
         const result = streamText({
-          model: myProvider.languageModel(selectedChatModel),
+          model: selectedProviderInstance.languageModel(selectedChatModel),
           system: systemPrompt({ selectedChatModel, requestHints }),
           messages: processedMessages,
           maxSteps: 5,
@@ -207,11 +209,12 @@ export async function POST(request: Request) {
           experimental_generateMessageId: generateUUID,
           tools: {
             getWeather,
-            createDocument: createDocument({ session, dataStream }),
-            updateDocument: updateDocument({ session, dataStream }),
+            createDocument: createDocument({ session, dataStream, selectedProvider }),
+            updateDocument: updateDocument({ session, dataStream, selectedProvider }),
             requestSuggestions: requestSuggestions({
               session,
               dataStream,
+              selectedProvider,
             }),
             ...mcpTools,
           },

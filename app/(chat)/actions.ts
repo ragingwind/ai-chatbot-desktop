@@ -14,7 +14,7 @@ import {
   updateChatVisiblityById,
 } from '@/lib/db/queries';
 import type { VisibilityType } from '@/components/visibility-selector';
-import { myProvider } from '@/lib/ai/providers';
+import { getProviderById } from '@/lib/ai/providers';
 
 import {
   createMCPClient,
@@ -30,13 +30,19 @@ export async function saveChatModelAsCookie(model: string) {
   cookieStore.set('chat-model', model);
 }
 
+export async function saveChatProviderModelAsCookie(model: string) {
+  const cookieStore = await cookies();
+  cookieStore.set('provider-model', model);
+}
+
 export async function generateTitleFromUserMessage({
   message,
 }: {
   message: UIMessage;
 }) {
+  const provider = getProviderById('anthropic'); // Use default provider for title generation
   const { text: title } = await generateText({
-    model: myProvider.languageModel('title-model'),
+    model: provider.languageModel('title-model'),
     system: `\n
     - you will generate a short title based on the first message a user begins a conversation with
     - ensure it is not more than 80 characters long

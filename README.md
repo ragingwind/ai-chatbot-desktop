@@ -37,6 +37,11 @@
 - Removed next-electron-rsc dependency that was disabling RSC and enabling MCP client from running server-side
 - Added @vercel/mcp-adapter example MCP server
 
+### Jun 27, 2025
+
+- Add WebLLM for LocalLLM.
+  - You might need 'pnpm exec playwright install' to finish the web-llm-middelware installation
+
 ## Features
 
 - [Next.js](https://nextjs.org) App Router

@@ -26,6 +26,7 @@ export function Chat({
   id,
   initialMessages,
   initialChatModel,
+  initialProviderModel,
   initialVisibilityType,
   isReadonly,
   session,
@@ -34,6 +35,7 @@ export function Chat({
   id: string;
   initialMessages: Array<UIMessage>;
   initialChatModel: string;
+  initialProviderModel: string;
   initialVisibilityType: VisibilityType;
   isReadonly: boolean;
   session: Session;
@@ -71,6 +73,7 @@ export function Chat({
       id,
       message: body.messages.at(-1),
       selectedChatModel: initialChatModel,
+      selectedProvider: initialProviderModel,
       selectedVisibilityType: visibilityType,
       selectedMCPServerConfigs: getSelectedMCPServerConfigs(),
     }),
@@ -126,6 +129,7 @@ export function Chat({
         <ChatHeader
           chatId={id}
           selectedModelId={initialChatModel}
+          selectedProviderModelId={initialProviderModel}
           selectedVisibilityType={initialVisibilityType}
           isReadonly={isReadonly}
           session={session}

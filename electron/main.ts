@@ -5,6 +5,7 @@ import { app, BrowserWindow, Menu, shell, screen } from 'electron';
 import defaultMenu from 'electron-default-menu';
 import dotenv from 'dotenv';
 import next from 'next';
+import { WebLLMMiddleware } from 'web-llm-middleware';
 
 // Get the directory name of the current module
 const appPath = app.getAppPath();
@@ -90,6 +91,12 @@ const createWindow = async () => {
   await app.whenReady();
 
   try {
+    await startWebLLM({ dev, model: 'Llama-3.2-1B-Instruct-q4f32_1-MLC' });
+
+    console.log(
+      `[Electron] Loaded WebLLM at http://localhost:15408 in ${dev ? 'development' : 'production'} mode`,
+    );
+
     const nextAppURL = app.isPackaged
       ? await startNextApp({
           port,
@@ -161,6 +168,37 @@ async function startNextApp({
 
         server.listen(port, () => resolve(`http://localhost:${port}`));
       });
+    } catch (error) {
+      reject(
+        new Error(
+          `Failed to start Next.js app: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+      );
+    }
+  });
+}
+
+async function startWebLLM({
+  dev,
+  model,
+  port = 15408,
+}: { dev?: boolean; model?: string; port?: number }) {
+  return new Promise<string>((resolve, reject) => {
+    try {
+      // next start doesn't support standalocne
+      const app = new WebLLMMiddleware({
+        dev: true,
+        model,
+      });
+
+      const handler = app.getRequestHandler();
+
+      const server = createServer((req, res) => {
+        const parsedUrl = parse(req.url ?? '/', true);
+        handler(req, res, parsedUrl);
+      });
+
+      server.listen(port, () => resolve(`http://localhost:${port}`));
     } catch (error) {
       reject(
         new Error(

@@ -13,16 +13,19 @@ import { memo } from 'react';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { type VisibilityType, VisibilitySelector } from './visibility-selector';
 import type { Session } from 'next-auth';
+import { ProviderModelSelector } from './provider-model-selector';
 
 function PureChatHeader({
   chatId,
   selectedModelId,
+  selectedProviderModelId,
   selectedVisibilityType,
   isReadonly,
   session,
 }: {
   chatId: string;
   selectedModelId: string;
+  selectedProviderModelId: string;
   selectedVisibilityType: VisibilityType;
   isReadonly: boolean;
   session: Session;
@@ -53,6 +56,14 @@ function PureChatHeader({
           </TooltipTrigger>
           <TooltipContent>New Chat</TooltipContent>
         </Tooltip>
+      )}
+
+      {!isReadonly && (
+        <ProviderModelSelector
+          session={session}
+          selectedModelId={selectedProviderModelId}
+          className="order-1 md:order-2"
+        />
       )}
 
       {!isReadonly && (
@@ -88,5 +99,8 @@ function PureChatHeader({
 }
 
 export const ChatHeader = memo(PureChatHeader, (prevProps, nextProps) => {
-  return prevProps.selectedModelId === nextProps.selectedModelId;
+  return (
+    prevProps.selectedModelId === nextProps.selectedModelId &&
+    prevProps.selectedProviderModelId === nextProps.selectedProviderModelId
+  );
 });
